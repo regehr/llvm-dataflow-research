@@ -1,7 +1,7 @@
-#include <iostream>
 #include "llvm/ADT/APInt.h"
 #include "llvm/IR/ConstantRange.h"
 #include "llvm/Support/raw_ostream.h"
+#include <iostream>
 
 using namespace llvm;
 
@@ -22,7 +22,7 @@ ConstantRange next(const ConstantRange CR) {
 }
 
 int main(void) {
-  ConstantRange C(Width, /* isFullSet= */false);
+  ConstantRange C(Width, /* isFullSet= */ false);
   do {
     outs() << C << "\n";
     C = next(C);
