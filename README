@@ -1,0 +1,6 @@
+instructions:
+
+mkdir build
+cd build
+cmake .. -DLLVM_DIR=$HOME/llvm-install -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang
+make
