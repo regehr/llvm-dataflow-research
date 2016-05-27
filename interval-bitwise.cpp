@@ -5,28 +5,37 @@
 
 using namespace llvm;
 
-static const int Width = 4;
+static const int Width = 3;
 
-ConstantRange exhaustive(const ConstantRange L, const ConstantRange R) {
-  ConstantRange Res(Width, /* isFullSet= */ false);
+ConstantRange exhaustive(const ConstantRange L, const ConstantRange R,
+                         const ConstantRange Untrusted) {
   if (L.isEmptySet() || R.isEmptySet())
-    return Res;
+    return ConstantRange(Width, /* isFullSet= */ false);
+  bool Seen[1 << Width] = { false };
+  ConstantRange Joined(Width, /* isFullSet= */ false);
   auto LI = L.getLower();
   do {
     auto RI = R.getLower();
     do {
-      Res = Res.unionWith(ConstantRange(LI - RI));
+      auto Val = LI << RI;
+      if (!Untrusted.contains(Val)) {
+        outs() << "oops!\n";
+        exit(-1);
+      }
+      Joined.unionWith(ConstantRange(Val));
+      Seen[Val.getLimitedValue()] = true;
       RI++;
     } while (RI != R.getUpper());
     LI++;
   } while (LI != L.getUpper());
+  ConstantRange Res(Width, /* isFullSet= */ false);
   return Res;
 }
 
 void check(ConstantRange L, ConstantRange R) {
-  ConstantRange Res1 = L.sub(R);
-  ConstantRange Res2 = exhaustive(L, R);
-  if (Res1 != Res2)
+  ConstantRange Res1 = L.shl(R);
+  ConstantRange Res2 = exhaustive(L, R, Res1);
+  if (Res2.getSetSize().ult(Res1.getSetSize()))
     outs() << L << " op " << R << " = " << Res1 << " " << Res2 << "\n";
 }
 
