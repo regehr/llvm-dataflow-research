@@ -1,4 +1,5 @@
-instructions:
+Test driver for looking into correctness and precision of improvements
+to LLVM's ValueTracking the LazyValueInfo analyses.
 
 mkdir build
 cd build
