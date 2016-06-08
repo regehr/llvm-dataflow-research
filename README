@@ -1,7 +1,9 @@
 Test driver for looking into correctness and precision of improvements
 to LLVM's ValueTracking the LazyValueInfo analyses.
 
+export PATH=$HOME/llvm-install/bin:$PATH
 mkdir build
 cd build
-cmake .. -DLLVM_DIR=$HOME/llvm-install -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang
+cmake .. -DLLVM_DIR=$HOME/llvm-install -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=Release+Asserts
+
 make
