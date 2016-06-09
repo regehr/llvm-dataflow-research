@@ -5,7 +5,7 @@
 
 using namespace llvm;
 
-static const int Width = 5;
+static const int Width = 4;
 static const int Range = 1 << Width;
 
 bool ok(const ConstantRange &R, const bool Table[Range]) {
@@ -91,7 +91,7 @@ ConstantRange bestCR(const bool Table[Range]) {
 }
 
 ConstantRange exhaustive(const ConstantRange L, const ConstantRange R,
-                         const ConstantRange Untrusted) {
+                         unsigned Opcode, const ConstantRange Untrusted) {
   if (L.isEmptySet() || R.isEmptySet())
     return ConstantRange(Width, /* isFullSet= */ false);
   bool Table[1 << Width] = { 0 };
@@ -99,7 +99,26 @@ ConstantRange exhaustive(const ConstantRange L, const ConstantRange R,
   do {
     auto RI = R.getLower();
     do {
-      auto Val = LI & RI;
+      APInt Val;
+      switch (Opcode) {
+      case Instruction::And:
+        Val = LI & RI;
+        break;
+      case Instruction::Or:
+        Val = LI | RI;
+        break;
+      case Instruction::Xor:
+        Val = LI ^ RI;
+        break;
+      case Instruction::Add:
+        Val = LI + RI;
+        break;
+      case Instruction::Sub:
+        Val = LI - RI;
+        break;
+      default:
+        report_fatal_error("unknown opcode");
+      }
       if (false)
         outs() << LI << " op " << RI << " = " << Val << "\n";
       if (!Untrusted.contains(Val))
@@ -112,9 +131,28 @@ ConstantRange exhaustive(const ConstantRange L, const ConstantRange R,
   return bestCR(Table);
 }
 
-double check(ConstantRange L, ConstantRange R) {
-  ConstantRange Res1 = L.binaryAnd(R);
-  ConstantRange Res2 = exhaustive(L, R, Res1);
+double check(ConstantRange L, ConstantRange R, unsigned Opcode) {
+  ConstantRange Res1(Width, true);
+  switch (Opcode) {
+  case Instruction::And:
+    Res1 = L.binaryAnd(R);
+    break;
+  case Instruction::Or:
+    Res1 = L.binaryOr(R);
+    break;
+  case Instruction::Xor:
+    report_fatal_error("xor unsupported");
+    break;
+  case Instruction::Add:
+    Res1 = L.add(R);
+    break;
+  case Instruction::Sub:
+    Res1 = L.sub(R);
+    break;
+  default:
+    report_fatal_error("unsupported opcode");
+  }
+  ConstantRange Res2 = exhaustive(L, R, Opcode, Res1);
   if (Res2.getSetSize().ult(Res1.getSetSize())) {
     int diff = (Res1.getSetSize() - Res2.getSetSize()).getLimitedValue();
     outs() << L << " op " << R << " =   LLVM: " << Res1 << "   precise: " << Res2 <<
@@ -142,14 +180,14 @@ ConstantRange next(const ConstantRange CR) {
   return ConstantRange(L, U);
 }
 
-void testAllConstantRanges() {
+void testAllConstantRanges(unsigned Opcode) {
   ConstantRange L(Width, /* isFullSet= */ false);
   ConstantRange R(Width, /* isFullSet= */ false);
   long count = 0;
   double bits = 0;
   do {
     do {
-      bits += check(L, R);
+      bits += check(L, R, Opcode);
       ++count;
       R = next(R);
     } while (!R.isEmptySet());
@@ -160,14 +198,14 @@ void testAllConstantRanges() {
   outs() << "total bits saved = " << bits << "\n";
 }
 
-void testAllRHSConstant() {
+void testAllRHSConstant(unsigned Opcode) {
   ConstantRange L(Width, /* isFullSet= */ false);
   APInt R(Width, 0);
   long count = 0;
   double bits = 0;
   do {
     do {
-      bits += check(L, R);
+      bits += check(L, R, Opcode);
       ++count;
       ++R;
     } while (!R.isMaxValue());
@@ -179,7 +217,8 @@ void testAllRHSConstant() {
 }
 
 int main(void) {
-  testAllConstantRanges();
-  //testAllRHSConstant();
+  testAllConstantRanges(Instruction::Or);
+  if (0)
+    testAllRHSConstant(Instruction::And);
   return 0;
 }
