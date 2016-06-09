@@ -5,7 +5,7 @@
 
 using namespace llvm;
 
-static const int Width = 4;
+static const int Width = 5;
 static const int Range = 1 << Width;
 
 bool ok(const ConstantRange &R, const bool Table[Range]) {
@@ -124,7 +124,7 @@ double check(ConstantRange L, ConstantRange R) {
     outs() << L << " op " << R << " =   LLVM: " << Res1 << "   precise: " << Res2 << "\n";
     report_fatal_error("oops2");
   }
-  
+
   APInt difference = Res1.getSetSize() - Res2.getSetSize();
   if (difference.isMinValue())
     return 0;
@@ -156,7 +156,8 @@ void testAllConstantRanges() {
     L = next(L);
   } while (!L.isEmptySet());
   outs() << "checked " << count << " ConstantRanges\n";
-  outs() << "bit saved = " << (bits / count) << "\n";
+  outs() << "average bits saved = " << (bits / count) << "\n";
+  outs() << "total bits saved = " << bits << "\n";
 }
 
 void testAllRHSConstant() {
@@ -173,7 +174,8 @@ void testAllRHSConstant() {
     L = next(L);
   } while (!L.isEmptySet());
   outs() << "checked " << count << " ConstantRanges\n";
-  outs() << "bit saved = " << (bits / count) << "\n";
+  outs() << "average bits saved = " << (bits / count) << "\n";
+  outs() << "total bits saved = " << bits << "\n";
 }
 
 int main(void) {
