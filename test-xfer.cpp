@@ -5,8 +5,11 @@
 
 using namespace llvm;
 
-static const int Width = 4;
-static const int Range = 1 << Width;
+static const bool Verbose = false;
+static const int MaxWidth = 5;
+
+int Width, Range;
+double Bits, PreciseBits;
 
 bool ok(const ConstantRange &R, const bool Table[Range]) {
   for (int i = 0; i < Range; ++i) {
@@ -94,7 +97,9 @@ ConstantRange exhaustive(const ConstantRange L, const ConstantRange R,
                          unsigned Opcode, const ConstantRange Untrusted) {
   if (L.isEmptySet() || R.isEmptySet())
     return ConstantRange(Width, /* isFullSet= */ false);
-  bool Table[1 << Width] = { 0 };
+  bool Table[1 << Width];
+  for (int i = 0; i < (1 << Width); ++i)
+    Table[i] = false;
   auto LI = L.getLower();
   do {
     auto RI = R.getLower();
@@ -131,7 +136,7 @@ ConstantRange exhaustive(const ConstantRange L, const ConstantRange R,
   return bestCR(Table);
 }
 
-double check(ConstantRange L, ConstantRange R, unsigned Opcode) {
+void check(ConstantRange L, ConstantRange R, unsigned Opcode) {
   ConstantRange Res1(Width, true);
   switch (Opcode) {
   case Instruction::And:
@@ -155,18 +160,25 @@ double check(ConstantRange L, ConstantRange R, unsigned Opcode) {
   ConstantRange Res2 = exhaustive(L, R, Opcode, Res1);
   if (Res2.getSetSize().ult(Res1.getSetSize())) {
     int diff = (Res1.getSetSize() - Res2.getSetSize()).getLimitedValue();
-    outs() << L << " op " << R << " =   LLVM: " << Res1 << "   precise: " << Res2 <<
-      " diff = " << diff << "\n";
+    if (Verbose)
+      outs() << L << " op " << R << " =   LLVM: " << Res1 << "   precise: " << Res2 <<
+        " diff = " << diff << "\n";
   }
   if (Res1.getSetSize().ult(Res2.getSetSize())) {
-    outs() << L << " op " << R << " =   LLVM: " << Res1 << "   precise: " << Res2 << "\n";
+    if (Verbose)
+      outs() << L << " op " << R << " =   LLVM: " << Res1 << "   precise: " << Res2 << "\n";
     report_fatal_error("oops2");
   }
 
-  APInt difference = Res1.getSetSize() - Res2.getSetSize();
-  if (difference.isMinValue())
-    return 0;
-  return log2((double)difference.getLimitedValue());
+  //outs() << "width = " << Res1.getSetSize().getLimitedValue() << " ";
+  //outs() << "log width = " << log2((double)Res1.getSetSize().getLimitedValue()) << "\n";
+
+  long W = Res1.getSetSize().getLimitedValue();
+  if (W > 0)
+    PreciseBits += log2((double)W);
+  W = Res2.getSetSize().getLimitedValue();
+  if (W > 0)
+    Bits += log2((double)W);
 }
 
 ConstantRange next(const ConstantRange CR) {
@@ -181,44 +193,29 @@ ConstantRange next(const ConstantRange CR) {
 }
 
 void testAllConstantRanges(unsigned Opcode) {
-  ConstantRange L(Width, /* isFullSet= */ false);
-  ConstantRange R(Width, /* isFullSet= */ false);
+  ConstantRange L(Width, /*isFullSet=*/false);
+  ConstantRange R(Width, /*isFullSet=*/false);
+  Bits = PreciseBits = 0.0;
   long count = 0;
-  double bits = 0;
   do {
     do {
-      bits += check(L, R, Opcode);
+      check(L, R, Opcode);
       ++count;
       R = next(R);
     } while (!R.isEmptySet());
     L = next(L);
   } while (!L.isEmptySet());
   outs() << "checked " << count << " ConstantRanges\n";
-  outs() << "average bits saved = " << (bits / count) << "\n";
-  outs() << "total bits saved = " << bits << "\n";
-}
-
-void testAllRHSConstant(unsigned Opcode) {
-  ConstantRange L(Width, /* isFullSet= */ false);
-  APInt R(Width, 0);
-  long count = 0;
-  double bits = 0;
-  do {
-    do {
-      bits += check(L, R, Opcode);
-      ++count;
-      ++R;
-    } while (!R.isMaxValue());
-    L = next(L);
-  } while (!L.isEmptySet());
-  outs() << "checked " << count << " ConstantRanges\n";
-  outs() << "average bits saved = " << (bits / count) << "\n";
-  outs() << "total bits saved = " << bits << "\n";
+  outs() << "best possible bits = " << (PreciseBits / count) << "\n";
+  outs() << "transfer function bits = " << (Bits / count) << "\n";
 }
 
 int main(void) {
-  testAllConstantRanges(Instruction::Or);
-  if (0)
-    testAllRHSConstant(Instruction::And);
+  for (Width = 1; Width <= MaxWidth; ++Width) {
+    outs() << "Width = " << Width << "\n";
+    Range = 1 << Width;
+    testAllConstantRanges(Instruction::And);
+    testAllConstantRanges(Instruction::Or);
+  }
   return 0;
 }
