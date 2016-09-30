@@ -75,7 +75,7 @@ ConstantRange bestCR(const bool Table[Range]) {
   } else {
     APInt Lo(Width, (MaxHole + MaxSize) % Range);
     APInt Hi(Width, MaxHole);
-    R = ConstantRange (Lo, Hi);
+    R = ConstantRange(Lo, Hi);
   }
 
   assert(ok(R, Table));
@@ -161,17 +161,19 @@ void check(ConstantRange L, ConstantRange R, unsigned Opcode) {
   if (Res2.getSetSize().ult(Res1.getSetSize())) {
     int diff = (Res1.getSetSize() - Res2.getSetSize()).getLimitedValue();
     if (Verbose)
-      outs() << L << " op " << R << " =   LLVM: " << Res1 << "   precise: " << Res2 <<
-        " diff = " << diff << "\n";
+      outs() << L << " op " << R << " =   LLVM: " << Res1
+             << "   precise: " << Res2 << " diff = " << diff << "\n";
   }
   if (Res1.getSetSize().ult(Res2.getSetSize())) {
     if (Verbose)
-      outs() << L << " op " << R << " =   LLVM: " << Res1 << "   precise: " << Res2 << "\n";
+      outs() << L << " op " << R << " =   LLVM: " << Res1
+             << "   precise: " << Res2 << "\n";
     report_fatal_error("oops2");
   }
 
-  //outs() << "width = " << Res1.getSetSize().getLimitedValue() << " ";
-  //outs() << "log width = " << log2((double)Res1.getSetSize().getLimitedValue()) << "\n";
+  // outs() << "width = " << Res1.getSetSize().getLimitedValue() << " ";
+  // outs() << "log width = " <<
+  // log2((double)Res1.getSetSize().getLimitedValue()) << "\n";
 
   long W = Res1.getSetSize().getLimitedValue();
   if (W > 0)
