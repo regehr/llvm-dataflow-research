@@ -214,7 +214,7 @@ void testAllConstantRanges(unsigned Opcode) {
 
 int main(void) {
   for (Width = 1; Width <= MaxWidth; ++Width) {
-    outs() << "Width = " << Width << "\n";
+    outs() << "\nWidth = " << Width << "\n";
     Range = 1 << Width;
     testAllConstantRanges(Instruction::And);
     testAllConstantRanges(Instruction::Or);
