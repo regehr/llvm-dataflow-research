@@ -5,11 +5,25 @@
 
 using namespace llvm;
 
-static const bool Verbose = false;
-static const int MaxWidth = 5;
+static const bool Verbose = true;
+static const int MaxWidth = 3;
 
 int Width, Range;
 double Bits, PreciseBits;
+
+void printUnsigned(const ConstantRange &CR, raw_ostream &OS) {
+  if (CR.isFullSet())
+    OS << "full-set";
+  else if (CR.isEmptySet())
+    OS << "empty-set";
+  else {
+    OS << "[";
+    CR.getLower().print(OS, /*isSigned=*/false);
+    OS << ",";
+    CR.getUpper().print(OS, /*isSigned=*/false);
+    OS << ")";
+  }
+}
 
 bool ok(const ConstantRange &R, const bool Table[Range]) {
   for (int i = 0; i < Range; ++i) {
@@ -33,9 +47,9 @@ ConstantRange bestCR(const bool Table[Range]) {
       Any = i;
     }
   if (Pop == 0)
-    return ConstantRange(Width, false);
+    return ConstantRange(Width, /*isFullSet=*/false);
   if (Pop == Range)
-    return ConstantRange(Width, true);
+    return ConstantRange(Width, /*isFullSet=*/true);
 
   unsigned Hole = 0, MaxHole = 0, MaxSize = 0;
   bool inHole = false;
@@ -96,7 +110,7 @@ ConstantRange bestCR(const bool Table[Range]) {
 ConstantRange exhaustive(const ConstantRange L, const ConstantRange R,
                          unsigned Opcode, const ConstantRange Untrusted) {
   if (L.isEmptySet() || R.isEmptySet())
-    return ConstantRange(Width, /* isFullSet= */ false);
+    return ConstantRange(Width, /*isFullSet=*/false);
   bool Table[1 << Width];
   for (int i = 0; i < (1 << Width); ++i)
     Table[i] = false;
@@ -124,16 +138,31 @@ ConstantRange exhaustive(const ConstantRange L, const ConstantRange R,
       default:
         report_fatal_error("unknown opcode");
       }
-      if (false)
-        outs() << LI << " op " << RI << " = " << Val << "\n";
       if (!Untrusted.contains(Val))
-        report_fatal_error("oops1");
+        report_fatal_error("BUG! ConstantRange transfer function is not sound");
       Table[Val.getLimitedValue()] = true;
       ++RI;
     } while (RI != R.getUpper());
     ++LI;
   } while (LI != L.getUpper());
   return bestCR(Table);
+}
+
+std::string tostr(unsigned Opcode) {
+  switch (Opcode) {
+  case Instruction::And:
+    return "&";
+  case Instruction::Or:
+    return "|";
+  case Instruction::Xor:
+    return "^";
+  case Instruction::Add:
+    return "+";
+  case Instruction::Sub:
+    return "-";
+  default:
+    report_fatal_error("unsupported opcode");
+  }
 }
 
 void check(ConstantRange L, ConstantRange R, unsigned Opcode) {
@@ -158,22 +187,23 @@ void check(ConstantRange L, ConstantRange R, unsigned Opcode) {
     report_fatal_error("unsupported opcode");
   }
   ConstantRange Res2 = exhaustive(L, R, Opcode, Res1);
-  if (Res2.getSetSize().ult(Res1.getSetSize())) {
-    int diff = (Res1.getSetSize() - Res2.getSetSize()).getLimitedValue();
-    if (Verbose)
-      outs() << L << " op " << R << " =   LLVM: " << Res1
-             << "   precise: " << Res2 << " diff = " << diff << "\n";
+  if (Verbose) {
+    outs() << "unsigned: " << L << " " << tostr(Opcode) << " " << R << " =   LLVM: " << Res1
+           << "   precise: " << Res2 << "\n";
+    outs() << "signed: ";
+    printUnsigned(L, outs());
+    outs() << " op ";
+    printUnsigned(R, outs());
+    outs() << " =   LLVM: ";
+    printUnsigned(Res1, outs());
+    outs() << "   precise: ";
+    printUnsigned(Res2, outs());
+    outs() << "\n";
+    if (Res1.getSetSize().ugt(Res2.getSetSize())) {
+      outs() << "imprecise!\n";
+    }
+    outs() << "\n";
   }
-  if (Res1.getSetSize().ult(Res2.getSetSize())) {
-    if (Verbose)
-      outs() << L << " op " << R << " =   LLVM: " << Res1
-             << "   precise: " << Res2 << "\n";
-    report_fatal_error("oops2");
-  }
-
-  // outs() << "width = " << Res1.getSetSize().getLimitedValue() << " ";
-  // outs() << "log width = " <<
-  // log2((double)Res1.getSetSize().getLimitedValue()) << "\n";
 
   long W = Res1.getSetSize().getLimitedValue();
   if (W > 0)
