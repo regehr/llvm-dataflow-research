@@ -135,6 +135,9 @@ ConstantRange exhaustive(const ConstantRange L, const ConstantRange R,
       case Instruction::Sub:
         Val = LI - RI;
         break;
+      case Instruction::Shl:
+        Val = LI.shl(RI);
+        break;
       default:
         report_fatal_error("unknown opcode");
       }
@@ -160,6 +163,8 @@ std::string tostr(unsigned Opcode) {
     return "+";
   case Instruction::Sub:
     return "-";
+  case Instruction::Shl:
+    return "<<";
   default:
     report_fatal_error("unsupported opcode");
   }
@@ -182,6 +187,9 @@ void check(ConstantRange L, ConstantRange R, unsigned Opcode) {
     break;
   case Instruction::Sub:
     Res1 = L.sub(R);
+    break;
+  case Instruction::Shl:
+    Res1 = L.shl(R);
     break;
   default:
     report_fatal_error("unsupported opcode");
@@ -207,10 +215,10 @@ void check(ConstantRange L, ConstantRange R, unsigned Opcode) {
 
   long W = Res1.getSetSize().getLimitedValue();
   if (W > 0)
-    PreciseBits += log2((double)W);
+    Bits += log2((double)W);
   W = Res2.getSetSize().getLimitedValue();
   if (W > 0)
-    Bits += log2((double)W);
+    PreciseBits += log2((double)W);
 }
 
 ConstantRange next(const ConstantRange CR) {
@@ -248,6 +256,7 @@ int main(void) {
     Range = 1 << Width;
     testAllConstantRanges(Instruction::And);
     testAllConstantRanges(Instruction::Or);
+    testAllConstantRanges(Instruction::Shl);
   }
   return 0;
 }
