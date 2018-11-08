@@ -11,7 +11,16 @@ static const int MaxWidth = 5;
 int Width, Range;
 double Bits, PreciseBits;
 
-void printUnsigned(const ConstantRange &CR, raw_ostream &OS) {
+class MyConstantRange : public ConstantRange {
+public:
+  explicit MyConstantRange(uint32_t BitWidth, bool isFullSet) :
+      ConstantRange(BitWidth, isFullSet) {}
+  MyConstantRange(APInt Value) : ConstantRange(Value) {}
+  MyConstantRange(APInt Lower, APInt Upper) : ConstantRange(Lower, Upper) {}
+  using ConstantRange::operator=;
+};
+
+void printUnsigned(const MyConstantRange &CR, raw_ostream &OS) {
   if (CR.isFullSet())
     OS << "full-set";
   else if (CR.isEmptySet())
@@ -25,7 +34,7 @@ void printUnsigned(const ConstantRange &CR, raw_ostream &OS) {
   }
 }
 
-bool ok(const ConstantRange &R, const bool Table[Range]) {
+bool ok(const MyConstantRange &R, const bool Table[Range]) {
   for (int i = 0; i < Range; ++i) {
     if (Table[i]) {
       APInt a(Width, i);
@@ -37,7 +46,7 @@ bool ok(const ConstantRange &R, const bool Table[Range]) {
 }
 
 // Find the largest hole and build a ConstantRange around it
-ConstantRange bestCR(const bool Table[Range]) {
+MyConstantRange bestCR(const bool Table[Range]) {
 
   unsigned Pop = 0;
   unsigned Any;
@@ -47,9 +56,9 @@ ConstantRange bestCR(const bool Table[Range]) {
       Any = i;
     }
   if (Pop == 0)
-    return ConstantRange(Width, /*isFullSet=*/false);
+    return MyConstantRange(Width, /*isFullSet=*/false);
   if (Pop == Range)
-    return ConstantRange(Width, /*isFullSet=*/true);
+    return MyConstantRange(Width, /*isFullSet=*/true);
 
   unsigned Hole = 0, MaxHole = 0, MaxSize = 0;
   bool inHole = false;
@@ -81,15 +90,15 @@ ConstantRange bestCR(const bool Table[Range]) {
   while (!Table[Top])
     --Top;
 
-  ConstantRange R(Width, false);
+  MyConstantRange R(Width, false);
   if ((Bottom + (Range - 1 - Top)) > MaxSize) {
     APInt Lo(Width, Bottom);
     APInt Hi(Width, (Top + 1) % Range);
-    R = ConstantRange(Lo, Hi);
+    R = MyConstantRange(Lo, Hi);
   } else {
     APInt Lo(Width, (MaxHole + MaxSize) % Range);
     APInt Hi(Width, MaxHole);
-    R = ConstantRange(Lo, Hi);
+    R = MyConstantRange(Lo, Hi);
   }
 
   assert(ok(R, Table));
@@ -98,19 +107,19 @@ ConstantRange bestCR(const bool Table[Range]) {
     assert(R.getUpper().getLimitedValue() == (Any + 1) % Range);
   } else {
     APInt L1 = R.getLower() + 1;
-    ConstantRange R2(L1, R.getUpper());
+    MyConstantRange R2(L1, R.getUpper());
     assert(!ok(R2, Table));
-    ConstantRange R3(R.getLower(), R.getUpper() - 1);
+    MyConstantRange R3(R.getLower(), R.getUpper() - 1);
     assert(!ok(R3, Table));
   }
 
   return R;
 }
 
-ConstantRange exhaustive(const ConstantRange L, const ConstantRange R,
-                         unsigned Opcode, const ConstantRange Untrusted) {
+MyConstantRange exhaustive(const MyConstantRange L, const MyConstantRange R,
+                         unsigned Opcode, const MyConstantRange Untrusted) {
   if (L.isEmptySet() || R.isEmptySet())
-    return ConstantRange(Width, /*isFullSet=*/false);
+    return MyConstantRange(Width, /*isFullSet=*/false);
   bool Table[1 << Width];
   for (int i = 0; i < (1 << Width); ++i)
     Table[i] = false;
@@ -145,7 +154,7 @@ ConstantRange exhaustive(const ConstantRange L, const ConstantRange R,
         report_fatal_error("unknown opcode");
       }
       if (!Untrusted.contains(Val))
-        report_fatal_error("BUG! ConstantRange transfer function is not sound");
+        report_fatal_error("BUG! MyConstantRange transfer function is not sound");
       Table[Val.getLimitedValue()] = true;
       ++RI;
     } while (RI != R.getUpper());
@@ -175,8 +184,8 @@ std::string tostr(unsigned Opcode) {
   }
 }
 
-void check(ConstantRange L, ConstantRange R, unsigned Opcode) {
-  ConstantRange Res1(Width, true);
+void check(MyConstantRange L, MyConstantRange R, unsigned Opcode) {
+  MyConstantRange Res1(Width, true);
   switch (Opcode) {
   case Instruction::And:
     Res1 = L.binaryAnd(R);
@@ -202,7 +211,7 @@ void check(ConstantRange L, ConstantRange R, unsigned Opcode) {
   default:
     report_fatal_error("unsupported opcode");
   }
-  ConstantRange Res2 = exhaustive(L, R, Opcode, Res1);
+  MyConstantRange Res2 = exhaustive(L, R, Opcode, Res1);
   if (Verbose) {
     outs() << "unsigned: " << L << " " << tostr(Opcode) << " " << R << " =   LLVM: " << Res1
            << "   precise: " << Res2 << "\n";
@@ -229,7 +238,7 @@ void check(ConstantRange L, ConstantRange R, unsigned Opcode) {
     PreciseBits += log2((double)W);
 }
 
-ConstantRange next(const ConstantRange CR) {
+MyConstantRange next(const MyConstantRange CR) {
   auto L = CR.getLower();
   auto U = CR.getUpper();
   do {
@@ -237,12 +246,12 @@ ConstantRange next(const ConstantRange CR) {
       ++L;
     ++U;
   } while (L == U && !L.isMinValue() && !L.isMaxValue());
-  return ConstantRange(L, U);
+  return MyConstantRange(L, U);
 }
 
 void testAllConstantRanges(unsigned Opcode) {
-  ConstantRange L(Width, /*isFullSet=*/false);
-  ConstantRange R(Width, /*isFullSet=*/false);
+  MyConstantRange L(Width, /*isFullSet=*/false);
+  MyConstantRange R(Width, /*isFullSet=*/false);
   Bits = PreciseBits = 0.0;
   long count = 0;
   do {
