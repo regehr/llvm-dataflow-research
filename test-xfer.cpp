@@ -8,9 +8,6 @@ using namespace llvm;
 static const bool Verbose = false;
 static const int MaxWidth = 5;
 
-int Width, Range;
-double Bits, PreciseBits;
-
 class MyConstantRange : public ConstantRange {
 public:
   explicit MyConstantRange(uint32_t BitWidth, bool isFullSet) :
@@ -18,9 +15,37 @@ public:
   MyConstantRange(APInt Value) : ConstantRange(Value) {}
   MyConstantRange(APInt Lower, APInt Upper) : ConstantRange(Lower, Upper) {}
   using ConstantRange::operator=;
+
+  // your transfer functions go here
+
+#if 1
+  MyConstantRange
+  binaryOr(const MyConstantRange &Other) const {
+  if (isEmptySet() || Other.isEmptySet())
+    return MyConstantRange(getBitWidth(), /*isFullSet=*/false);
+
+  if (!isWrappedSet() && !Other.isWrappedSet()) {
+    APInt MaxOfMax = APIntOps::umax(getUnsignedMax(), Other.getUnsignedMax());
+    auto HighestBitSet = MaxOfMax.ceilLogBase2();
+    auto Low = MaxOfMax;
+    Low = 0;
+    auto High = Low;
+    High.setBit(HighestBitSet + 1);
+    return MyConstantRange(Low, High);
+  }
+
+  APInt umax = APIntOps::umax(getUnsignedMin(), Other.getUnsignedMin());
+  if (umax.isNullValue())
+    return MyConstantRange(getBitWidth(), /*isFullSet=*/true);
+  return MyConstantRange(std::move(umax), APInt::getNullValue(getBitWidth()));
+  }
+#endif
+
+
+
 };
 
-void printUnsigned(const MyConstantRange &CR, raw_ostream &OS) {
+static void printUnsigned(const MyConstantRange &CR, raw_ostream &OS) {
   if (CR.isFullSet())
     OS << "full-set";
   else if (CR.isEmptySet())
@@ -34,7 +59,8 @@ void printUnsigned(const MyConstantRange &CR, raw_ostream &OS) {
   }
 }
 
-bool ok(const MyConstantRange &R, const bool Table[Range]) {
+static bool ok(const MyConstantRange &R, const bool Table[], const int Width) {
+  const int Range = 1 << Width;
   for (int i = 0; i < Range; ++i) {
     if (Table[i]) {
       APInt a(Width, i);
@@ -46,8 +72,8 @@ bool ok(const MyConstantRange &R, const bool Table[Range]) {
 }
 
 // Find the largest hole and build a ConstantRange around it
-MyConstantRange bestCR(const bool Table[Range]) {
-
+static MyConstantRange bestCR(const bool Table[], const int Width) {
+  const int Range = 1 << Width;
   unsigned Pop = 0;
   unsigned Any;
   for (unsigned i = 0; i < Range; ++i)
@@ -101,23 +127,45 @@ MyConstantRange bestCR(const bool Table[Range]) {
     R = MyConstantRange(Lo, Hi);
   }
 
-  assert(ok(R, Table));
+  assert(ok(R, Table, Width));
   if (Pop == 1) {
     assert(R.getLower().getLimitedValue() == Any);
     assert(R.getUpper().getLimitedValue() == (Any + 1) % Range);
   } else {
     APInt L1 = R.getLower() + 1;
     MyConstantRange R2(L1, R.getUpper());
-    assert(!ok(R2, Table));
+    assert(!ok(R2, Table, Width));
     MyConstantRange R3(R.getLower(), R.getUpper() - 1);
-    assert(!ok(R3, Table));
+    assert(!ok(R3, Table, Width));
   }
 
   return R;
 }
 
-MyConstantRange exhaustive(const MyConstantRange L, const MyConstantRange R,
-                         unsigned Opcode, const MyConstantRange Untrusted) {
+static std::string tostr(const unsigned Opcode) {
+  switch (Opcode) {
+  case Instruction::And:
+    return "&";
+  case Instruction::Or:
+    return "|";
+  case Instruction::Add:
+    return "+";
+  case Instruction::Sub:
+    return "-";
+  case Instruction::Shl:
+    return "<<";
+  case Instruction::LShr:
+    return ">>l";
+  case Instruction::AShr:
+    return ">>a";
+  default:
+    report_fatal_error("unsupported opcode");
+  }
+}
+
+static MyConstantRange exhaustive(const MyConstantRange L, const MyConstantRange R,
+                                  const unsigned Opcode, const MyConstantRange Untrusted,
+                                  const int Width) {
   if (L.isEmptySet() || R.isEmptySet())
     return MyConstantRange(Width, /*isFullSet=*/false);
   bool Table[1 << Width];
@@ -153,38 +201,26 @@ MyConstantRange exhaustive(const MyConstantRange L, const MyConstantRange R,
       default:
         report_fatal_error("unknown opcode");
       }
-      if (!Untrusted.contains(Val))
+      if (!Untrusted.contains(Val)) {
+        outs() << "\n";
+        outs() << "width = " << Width << "\n";
+        outs() << "left operand: " << L << "\n";
+        outs() << "right operand: " << R << "\n";
+        outs() << "operation: " << tostr(Opcode) << "\n";
+        outs() << "untrusted: " << Untrusted << "\n";
+        outs() << "must contain: " << Val << "\n";
         report_fatal_error("BUG! MyConstantRange transfer function is not sound");
+      }
       Table[Val.getLimitedValue()] = true;
       ++RI;
     } while (RI != R.getUpper());
     ++LI;
   } while (LI != L.getUpper());
-  return bestCR(Table);
+  return bestCR(Table, Width);
 }
 
-std::string tostr(unsigned Opcode) {
-  switch (Opcode) {
-  case Instruction::And:
-    return "&";
-  case Instruction::Or:
-    return "|";
-  case Instruction::Add:
-    return "+";
-  case Instruction::Sub:
-    return "-";
-  case Instruction::Shl:
-    return "<<";
-  case Instruction::LShr:
-    return ">>l";
-  case Instruction::AShr:
-    return ">>a";
-  default:
-    report_fatal_error("unsupported opcode");
-  }
-}
-
-void check(MyConstantRange L, MyConstantRange R, unsigned Opcode) {
+static void check(const MyConstantRange L, const MyConstantRange R, const unsigned Opcode,
+                  double &Bits, double &PreciseBits, const int Width) {
   MyConstantRange Res1(Width, true);
   switch (Opcode) {
   case Instruction::And:
@@ -211,7 +247,7 @@ void check(MyConstantRange L, MyConstantRange R, unsigned Opcode) {
   default:
     report_fatal_error("unsupported opcode");
   }
-  MyConstantRange Res2 = exhaustive(L, R, Opcode, Res1);
+  MyConstantRange Res2 = exhaustive(L, R, Opcode, Res1, Width);
   if (Verbose) {
     outs() << "unsigned: " << L << " " << tostr(Opcode) << " " << R << " =   LLVM: " << Res1
            << "   precise: " << Res2 << "\n";
@@ -238,7 +274,7 @@ void check(MyConstantRange L, MyConstantRange R, unsigned Opcode) {
     PreciseBits += log2((double)W);
 }
 
-MyConstantRange next(const MyConstantRange CR) {
+static MyConstantRange next(const MyConstantRange CR) {
   auto L = CR.getLower();
   auto U = CR.getUpper();
   do {
@@ -249,14 +285,14 @@ MyConstantRange next(const MyConstantRange CR) {
   return MyConstantRange(L, U);
 }
 
-void testAllConstantRanges(unsigned Opcode) {
+static void testAllConstantRanges(const unsigned Opcode, const int Width) {
   MyConstantRange L(Width, /*isFullSet=*/false);
   MyConstantRange R(Width, /*isFullSet=*/false);
-  Bits = PreciseBits = 0.0;
+  double Bits = 0.0, PreciseBits = 0.0;
   long count = 0;
   do {
     do {
-      check(L, R, Opcode);
+      check(L, R, Opcode, Bits, PreciseBits, Width);
       ++count;
       R = next(R);
     } while (!R.isEmptySet());
@@ -267,17 +303,19 @@ void testAllConstantRanges(unsigned Opcode) {
   outs() << "transfer function bits = " << (Bits / count) << "\n";
 }
 
+static void test(const int Width) {
+  outs() << "\nWidth = " << Width << "\n";
+  testAllConstantRanges(Instruction::Add, Width);
+  testAllConstantRanges(Instruction::Sub, Width);
+  testAllConstantRanges(Instruction::And, Width);
+  testAllConstantRanges(Instruction::Or, Width);
+  testAllConstantRanges(Instruction::Shl, Width);
+  testAllConstantRanges(Instruction::LShr, Width);
+  testAllConstantRanges(Instruction::AShr, Width);
+}
+
 int main(void) {
-  for (Width = 1; Width <= MaxWidth; ++Width) {
-    outs() << "\nWidth = " << Width << "\n";
-    Range = 1 << Width;
-    testAllConstantRanges(Instruction::Add);
-    testAllConstantRanges(Instruction::Sub);
-    testAllConstantRanges(Instruction::And);
-    testAllConstantRanges(Instruction::Or);
-    testAllConstantRanges(Instruction::Shl);
-    testAllConstantRanges(Instruction::LShr);
-    testAllConstantRanges(Instruction::AShr);
-  }
+  for (int Width = 1; Width <= MaxWidth; ++Width)
+    test(Width);
   return 0;
 }
