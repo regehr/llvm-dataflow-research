@@ -5,8 +5,8 @@
 
 using namespace llvm;
 
-static const bool Verbose = true;
-static const int MaxWidth = 3;
+static const bool Verbose = false;
+static const int MaxWidth = 5;
 
 int Width, Range;
 double Bits, PreciseBits;
@@ -126,9 +126,6 @@ ConstantRange exhaustive(const ConstantRange L, const ConstantRange R,
       case Instruction::Or:
         Val = LI | RI;
         break;
-      case Instruction::Xor:
-        Val = LI ^ RI;
-        break;
       case Instruction::Add:
         Val = LI + RI;
         break;
@@ -137,6 +134,12 @@ ConstantRange exhaustive(const ConstantRange L, const ConstantRange R,
         break;
       case Instruction::Shl:
         Val = LI.shl(RI);
+        break;
+      case Instruction::LShr:
+        Val = LI.lshr(RI);
+        break;
+      case Instruction::AShr:
+        Val = LI.ashr(RI);
         break;
       default:
         report_fatal_error("unknown opcode");
@@ -157,14 +160,16 @@ std::string tostr(unsigned Opcode) {
     return "&";
   case Instruction::Or:
     return "|";
-  case Instruction::Xor:
-    return "^";
   case Instruction::Add:
     return "+";
   case Instruction::Sub:
     return "-";
   case Instruction::Shl:
     return "<<";
+  case Instruction::LShr:
+    return ">>l";
+  case Instruction::AShr:
+    return ">>a";
   default:
     report_fatal_error("unsupported opcode");
   }
@@ -179,9 +184,6 @@ void check(ConstantRange L, ConstantRange R, unsigned Opcode) {
   case Instruction::Or:
     Res1 = L.binaryOr(R);
     break;
-  case Instruction::Xor:
-    report_fatal_error("xor unsupported");
-    break;
   case Instruction::Add:
     Res1 = L.add(R);
     break;
@@ -190,6 +192,12 @@ void check(ConstantRange L, ConstantRange R, unsigned Opcode) {
     break;
   case Instruction::Shl:
     Res1 = L.shl(R);
+    break;
+  case Instruction::LShr:
+    Res1 = L.lshr(R);
+    break;
+  case Instruction::AShr:
+    Res1 = L.ashr(R);
     break;
   default:
     report_fatal_error("unsupported opcode");
@@ -245,7 +253,7 @@ void testAllConstantRanges(unsigned Opcode) {
     } while (!R.isEmptySet());
     L = next(L);
   } while (!L.isEmptySet());
-  outs() << "checked " << count << " ConstantRanges\n";
+  outs() << "checked " << count << " ConstantRanges for Op = " << tostr(Opcode) << "\n";
   outs() << "best possible bits = " << (PreciseBits / count) << "\n";
   outs() << "transfer function bits = " << (Bits / count) << "\n";
 }
@@ -254,9 +262,13 @@ int main(void) {
   for (Width = 1; Width <= MaxWidth; ++Width) {
     outs() << "\nWidth = " << Width << "\n";
     Range = 1 << Width;
+    testAllConstantRanges(Instruction::Add);
+    testAllConstantRanges(Instruction::Sub);
     testAllConstantRanges(Instruction::And);
     testAllConstantRanges(Instruction::Or);
     testAllConstantRanges(Instruction::Shl);
+    testAllConstantRanges(Instruction::LShr);
+    testAllConstantRanges(Instruction::AShr);
   }
   return 0;
 }
