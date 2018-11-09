@@ -18,9 +18,6 @@ public:
 
   // your transfer functions go here
 
-#if 1
-#endif
-
 };
 
 static void printUnsigned(const MyConstantRange &CR, raw_ostream &OS) {
@@ -277,23 +274,40 @@ static void testAllConstantRanges(const unsigned Opcode, const int Width) {
     L = next(L);
   } while (!L.isEmptySet());
   outs() << "checked " << count << " ConstantRanges for Op = " << tostr(Opcode) << "\n";
-  outs() << "best possible bits = " << (PreciseBits / count) << "\n";
-  outs() << "transfer function bits = " << (Bits / count) << "\n";
+  double Precise = PreciseBits / count;
+  double Other = Bits / count;
+  assert(Precise <= Other);
+  outs() << "best possible bits = " << Precise << "\n";
+  outs() << "transfer function bits = " << Other << "\n";
 }
 
 static void test(const int Width) {
   outs() << "\nWidth = " << Width << "\n";
+  testAllConstantRanges(Instruction::Or, Width);
+  testAllConstantRanges(Instruction::And, Width);
   testAllConstantRanges(Instruction::Add, Width);
   testAllConstantRanges(Instruction::Sub, Width);
-  testAllConstantRanges(Instruction::And, Width);
-  testAllConstantRanges(Instruction::Or, Width);
   testAllConstantRanges(Instruction::Shl, Width);
   testAllConstantRanges(Instruction::LShr, Width);
   testAllConstantRanges(Instruction::AShr, Width);
 }
 
 int main(void) {
+#if 0
   for (int Width = 1; Width <= MaxWidth; ++Width)
     test(Width);
+#endif
+
+  test(4);
+
+#if 0
+  bool table[32]  = {};
+  table[2] = true;
+  table[30] = true;
+  MyConstantRange r = bestCR(table, 5);
+  outs() << r << "\n";
+  outs() << r.getSetSize().getLimitedValue() << "\n";
+#endif
+
   return 0;
 }
