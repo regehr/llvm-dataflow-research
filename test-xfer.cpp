@@ -228,7 +228,7 @@ static void check(const MyConstantRange L, const MyConstantRange R, const unsign
            << "   precise: " << Res2 << "\n";
     outs() << "unsigned: ";
     printUnsigned(L, outs());
-    outs() << " op ";
+    outs() << " " << tostr(Opcode) << " ";
     printUnsigned(R, outs());
     outs() << " =   LLVM: ";
     printUnsigned(Res1, outs());
