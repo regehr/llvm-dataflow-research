@@ -236,7 +236,9 @@ static void check(const MyConstantRange L, const MyConstantRange R, const unsign
     printUnsigned(Res2, outs());
     outs() << "\n";
     if (Res1.getSetSize().ugt(Res2.getSetSize())) {
-      outs() << "imprecise!\n";
+	outs() << "imprecise! "
+	       << "LLVM size: " << Res1.getSetSize().getLimitedValue()
+	       << "; Precise size: " << Res2.getSetSize().getLimitedValue() << "\n";
     }
     outs() << "\n";
   }
