@@ -224,9 +224,9 @@ static void check(const MyConstantRange L, const MyConstantRange R, const unsign
   }
   MyConstantRange Res2 = exhaustive(L, R, Opcode, Res1, Width);
   if (Verbose) {
-    outs() << "unsigned: " << L << " " << tostr(Opcode) << " " << R << " =   LLVM: " << Res1
+    outs() << "signed: " << L << " " << tostr(Opcode) << " " << R << " =   LLVM: " << Res1
            << "   precise: " << Res2 << "\n";
-    outs() << "signed: ";
+    outs() << "unsigned: ";
     printUnsigned(L, outs());
     outs() << " op ";
     printUnsigned(R, outs());
