@@ -179,8 +179,12 @@ static MyConstantRange exhaustive(const MyConstantRange L, const MyConstantRange
       if (!Untrusted.contains(Val)) {
         outs() << "\n";
         outs() << "width = " << Width << "\n";
-        outs() << "left operand: " << L << "\n";
-        outs() << "right operand: " << R << "\n";
+        outs() << "left operand: " << L << " (unsigned :";
+        printUnsigned(L, outs());
+        outs() << ")\n";
+        outs() << "right operand: " << R << " (unsigned : ";
+        printUnsigned(R, outs());
+        outs() << ")\n";
         outs() << "operation: " << tostr(Opcode) << "\n";
         outs() << "untrusted: " << Untrusted << "\n";
         outs() << "must contain: " << Val << "\n";
