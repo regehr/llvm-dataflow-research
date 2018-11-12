@@ -179,8 +179,12 @@ static MyConstantRange exhaustive(const MyConstantRange L, const MyConstantRange
       if (!Untrusted.contains(Val)) {
         outs() << "\n";
         outs() << "width = " << Width << "\n";
-        outs() << "left operand: " << L << "\n";
-        outs() << "right operand: " << R << "\n";
+        outs() << "left operand: " << L << " (unsigned :";
+        printUnsigned(L, outs());
+        outs() << ")\n";
+        outs() << "right operand: " << R << " (unsigned : ";
+        printUnsigned(R, outs());
+        outs() << ")\n";
         outs() << "operation: " << tostr(Opcode) << "\n";
         outs() << "untrusted: " << Untrusted << "\n";
         outs() << "must contain: " << Val << "\n";
@@ -224,11 +228,11 @@ static void check(const MyConstantRange L, const MyConstantRange R, const unsign
   }
   MyConstantRange Res2 = exhaustive(L, R, Opcode, Res1, Width);
   if (Verbose) {
-    outs() << "unsigned: " << L << " " << tostr(Opcode) << " " << R << " =   LLVM: " << Res1
+    outs() << "signed: " << L << " " << tostr(Opcode) << " " << R << " =   LLVM: " << Res1
            << "   precise: " << Res2 << "\n";
-    outs() << "signed: ";
+    outs() << "unsigned: ";
     printUnsigned(L, outs());
-    outs() << " op ";
+    outs() << " " << tostr(Opcode) << " ";
     printUnsigned(R, outs());
     outs() << " =   LLVM: ";
     printUnsigned(Res1, outs());
@@ -236,7 +240,9 @@ static void check(const MyConstantRange L, const MyConstantRange R, const unsign
     printUnsigned(Res2, outs());
     outs() << "\n";
     if (Res1.getSetSize().ugt(Res2.getSetSize())) {
-      outs() << "imprecise!\n";
+	outs() << "imprecise! "
+	       << "LLVM size: " << Res1.getSetSize().getLimitedValue()
+	       << "; Precise size: " << Res2.getSetSize().getLimitedValue() << "\n";
     }
     outs() << "\n";
   }
