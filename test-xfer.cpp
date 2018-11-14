@@ -5,7 +5,7 @@
 
 using namespace llvm;
 
-static const bool Verbose = true;
+static const bool Verbose = false;
 static const int MaxWidth = 4;
 
 class MyConstantRange : public ConstantRange {
@@ -17,6 +17,32 @@ public:
   using ConstantRange::operator=;
 
   // your transfer functions go here
+
+#if 0
+  // Pavol's code
+  MyConstantRange
+  binaryOr(const MyConstantRange &Other) const {
+    if (isEmptySet() || Other.isEmptySet())
+      return MyConstantRange(getBitWidth(), /*isFullSet=*/false);
+    APInt lower = APIntOps::umax(getUnsignedMin(), Other.getUnsignedMin());
+    unsigned active_bits = std::max(getUnsignedMax().getActiveBits(), Other.getUnsignedMax().getActiveBits());
+    APInt upper = APInt::getOneBitSet(getBitWidth(), active_bits); // upper of constant range is exclusive, 1111 + 1 -> 10000
+    return MyConstantRange(std::move(lower), std::move(upper));
+  }
+#endif
+
+#if 0
+  // this is the code from ConstantRange.cpp
+  MyConstantRange
+  binaryOr(const MyConstantRange &Other) const {
+    if (isEmptySet() || Other.isEmptySet())
+      return MyConstantRange(getBitWidth(), /*isFullSet=*/false);
+    APInt umax = APIntOps::umax(getUnsignedMin(), Other.getUnsignedMin());
+    if (umax.isNullValue())
+      return MyConstantRange(getBitWidth(), /*isFullSet=*/true);
+    return MyConstantRange(std::move(umax), APInt::getNullValue(getBitWidth()));
+  }
+#endif
 
 };
 
