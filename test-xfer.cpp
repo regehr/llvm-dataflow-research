@@ -5,8 +5,8 @@
 
 using namespace llvm;
 
-static const bool Verbose = false;
-static const int MaxWidth = 5;
+static const bool Verbose = true;
+static const int MaxWidth = 2;
 
 class MyConstantRange : public ConstantRange {
 public:
@@ -17,6 +17,27 @@ public:
   using ConstantRange::operator=;
 
   // your transfer functions go here
+
+MyConstantRange
+binaryOr(const MyConstantRange &Other) const {
+  if (isEmptySet() || Other.isEmptySet())
+    return MyConstantRange(getBitWidth(), /*isFullSet=*/false);
+
+  // TODO: replace this with something less conservative                                                                                                     
+
+  APInt lower = APIntOps::umax(getUnsignedMin(), Other.getUnsignedMin());
+
+  unsigned active_bits = std::max(getUnsignedMax().getActiveBits(), Other.getUnsignedMax().getActiveBits());
+  APInt upper = APInt::getOneBitSet(getBitWidth(), active_bits); // upper of constant range is exclusive, 1111 + 1 -> 10000                                  
+
+  return MyConstantRange(std::move(lower), std::move(upper));
+  
+  APInt umax = APIntOps::umax(getUnsignedMin(), Other.getUnsignedMin());
+  if (umax.isNullValue())
+    return MyConstantRange(getBitWidth(), /*isFullSet=*/true);
+  return MyConstantRange(std::move(umax), APInt::getNullValue(getBitWidth()));
+}
+
 
 };
 
@@ -195,7 +216,7 @@ static MyConstantRange exhaustive(const MyConstantRange L, const MyConstantRange
 }
 
 static void check(const MyConstantRange L, const MyConstantRange R, const unsigned Opcode,
-                  double &Bits, double &PreciseBits, const int Width) {
+                  double &Bits, double &PreciseBits, const int Width, int &Count, int &PreciseCount) {
   MyConstantRange Res1(Width, true);
   switch (Opcode) {
   case Instruction::And:
@@ -224,17 +245,18 @@ static void check(const MyConstantRange L, const MyConstantRange R, const unsign
   }
   MyConstantRange Res2 = exhaustive(L, R, Opcode, Res1, Width);
   if (Verbose) {
-    outs() << "unsigned: " << L << " " << tostr(Opcode) << " " << R << " =   LLVM: " << Res1
-           << "   precise: " << Res2 << "\n";
     outs() << "signed: ";
     printUnsigned(L, outs());
     outs() << " op ";
     printUnsigned(R, outs());
     outs() << " =   LLVM: ";
     printUnsigned(Res1, outs());
+    outs() << "\n";
+    outs() << "set size = " << Res1.getSetSize() << "  " << Res1.getSetSize().getLimitedValue() << "  " << Res1 << "\n";
     outs() << "   precise: ";
     printUnsigned(Res2, outs());
     outs() << "\n";
+    outs() << "set size = " << Res2.getSetSize() << "  " << Res2.getSetSize().getLimitedValue() << "  " << Res2 << "\n";
     if (Res1.getSetSize().ugt(Res2.getSetSize())) {
       outs() << "imprecise!\n";
     }
@@ -242,11 +264,15 @@ static void check(const MyConstantRange L, const MyConstantRange R, const unsign
   }
 
   long W = Res1.getSetSize().getLimitedValue();
-  if (W > 0)
+  if (W > 0) {
     Bits += log2((double)W);
+    Count++;
+  }
   W = Res2.getSetSize().getLimitedValue();
-  if (W > 0)
+  if (W > 0) {
     PreciseBits += log2((double)W);
+    PreciseCount++;
+  }
 }
 
 static MyConstantRange next(const MyConstantRange CR) {
@@ -265,18 +291,18 @@ static void testAllConstantRanges(const unsigned Opcode, const int Width) {
   MyConstantRange R(Width, /*isFullSet=*/false);
   double Bits = 0.0, PreciseBits = 0.0;
   long count = 0;
+  int Count = 0, PreciseCount = 0;
   do {
     do {
-      check(L, R, Opcode, Bits, PreciseBits, Width);
-      ++count;
+      check(L, R, Opcode, Bits, PreciseBits, Width, Count, PreciseCount);
       R = next(R);
     } while (!R.isEmptySet());
     L = next(L);
   } while (!L.isEmptySet());
   outs() << "checked " << count << " ConstantRanges for Op = " << tostr(Opcode) << "\n";
-  double Precise = PreciseBits / count;
-  double Other = Bits / count;
-  assert(Precise <= Other);
+  double Precise = PreciseBits / PreciseCount;
+  double Other = Bits / Count;
+  // assert(Precise <= Other);
   outs() << "best possible bits = " << Precise << "\n";
   outs() << "transfer function bits = " << Other << "\n";
 }
@@ -284,12 +310,14 @@ static void testAllConstantRanges(const unsigned Opcode, const int Width) {
 static void test(const int Width) {
   outs() << "\nWidth = " << Width << "\n";
   testAllConstantRanges(Instruction::Or, Width);
+#if 0
   testAllConstantRanges(Instruction::And, Width);
   testAllConstantRanges(Instruction::Add, Width);
   testAllConstantRanges(Instruction::Sub, Width);
   testAllConstantRanges(Instruction::Shl, Width);
   testAllConstantRanges(Instruction::LShr, Width);
   testAllConstantRanges(Instruction::AShr, Width);
+#endif
 }
 
 int main(void) {
@@ -298,7 +326,7 @@ int main(void) {
     test(Width);
 #endif
 
-  test(4);
+  test(2);
 
 #if 0
   bool table[32]  = {};
