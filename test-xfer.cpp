@@ -5,8 +5,8 @@
 
 using namespace llvm;
 
-static const bool Verbose = true;
-static const int MaxWidth = 2;
+static const bool Verbose = false;
+static const int MaxWidth = 4;
 
 class MyConstantRange : public ConstantRange {
 public:
@@ -199,65 +199,68 @@ static MyConstantRange exhaustive(const MyConstantRange L, const MyConstantRange
 }
 
 static void check(const MyConstantRange L, const MyConstantRange R, const unsigned Opcode,
-                  double &Bits, double &PreciseBits, const int Width, int &Count, int &PreciseCount) {
-  MyConstantRange Res1(Width, true);
+                  double &FastBits, double &PreciseBits, const int Width, int &Count, int &PreciseCount) {
+  MyConstantRange FastRes(Width, true);
   switch (Opcode) {
   case Instruction::And:
-    Res1 = L.binaryAnd(R);
+    FastRes = L.binaryAnd(R);
     break;
   case Instruction::Or:
-    Res1 = L.binaryOr(R);
+    FastRes = L.binaryOr(R);
     break;
   case Instruction::Add:
-    Res1 = L.add(R);
+    FastRes = L.add(R);
     break;
   case Instruction::Sub:
-    Res1 = L.sub(R);
+    FastRes = L.sub(R);
     break;
   case Instruction::Shl:
-    Res1 = L.shl(R);
+    FastRes = L.shl(R);
     break;
   case Instruction::LShr:
-    Res1 = L.lshr(R);
+    FastRes = L.lshr(R);
     break;
   case Instruction::AShr:
-    Res1 = L.ashr(R);
+    FastRes = L.ashr(R);
     break;
   default:
     report_fatal_error("unsupported opcode");
   }
-  MyConstantRange Res2 = exhaustive(L, R, Opcode, Res1, Width);
+
+  MyConstantRange PreciseRes = exhaustive(L, R, Opcode, FastRes, Width);
+
+  long FastSize = FastRes.getSetSize().getLimitedValue();
+  assert(FastSize >= 0 && FastSize <= (1 << Width));
+  long PreciseSize = PreciseRes.getSetSize().getLimitedValue();
+  assert(PreciseSize >= 0 && PreciseSize <= (1 << Width));
+  assert(PreciseSize <= FastSize);
+
   if (Verbose) {
-    outs() << "signed: " << L << " " << tostr(Opcode) << " " << R << " =   LLVM: " << Res1
-           << "   precise: " << Res2 << "\n";
+    outs() << "signed: " << L << " " << tostr(Opcode) << " " << R << " =   fast : " << FastRes
+           << "   precise: " << PreciseRes << "\n";
     outs() << "unsigned: ";
     printUnsigned(L, outs());
     outs() << " " << tostr(Opcode) << " ";
     printUnsigned(R, outs());
-    outs() << " =   LLVM: ";
-    printUnsigned(Res1, outs());
-    outs() << "\n";
-    outs() << "set size = " << Res1.getSetSize() << "  " << Res1.getSetSize().getLimitedValue() << "  " << Res1 << "\n";
+    outs() << " =   fast: ";
+    printUnsigned(FastRes, outs());
     outs() << "   precise: ";
-    printUnsigned(Res2, outs());
+    printUnsigned(PreciseRes, outs());
     outs() << "\n";
-    outs() << "set size = " << Res2.getSetSize() << "  " << Res2.getSetSize().getLimitedValue() << "  " << Res2 << "\n";
-    if (Res1.getSetSize().ugt(Res2.getSetSize())) {
-	outs() << "imprecise! "
-	       << "LLVM size: " << Res1.getSetSize().getLimitedValue()
-	       << "; Precise size: " << Res2.getSetSize().getLimitedValue() << "\n";
+    if (FastRes.getSetSize().ugt(PreciseRes.getSetSize())) {
+	outs() << "fast transfer function is imprecise! "
+	       << "fast size: " << FastRes.getSetSize().getLimitedValue()
+	       << "; Precise size: " << PreciseRes.getSetSize().getLimitedValue() << "\n";
     }
     outs() << "\n";
   }
 
-  long W = Res1.getSetSize().getLimitedValue();
-  if (W > 0) {
-    Bits += log2((double)W);
+  if (FastSize > 0) {
+    FastBits += log2((double)FastSize);
     Count++;
   }
-  W = Res2.getSetSize().getLimitedValue();
-  if (W > 0) {
-    PreciseBits += log2((double)W);
+  if (PreciseSize > 0) {
+    PreciseBits += log2((double)PreciseSize);
     PreciseCount++;
   }
 }
@@ -276,22 +279,22 @@ static MyConstantRange next(const MyConstantRange CR) {
 static void testAllConstantRanges(const unsigned Opcode, const int Width) {
   MyConstantRange L(Width, /*isFullSet=*/false);
   MyConstantRange R(Width, /*isFullSet=*/false);
-  double Bits = 0.0, PreciseBits = 0.0;
+  double FastBits = 0.0, PreciseBits = 0.0;
   long count = 0;
   int Count = 0, PreciseCount = 0;
   do {
     do {
-      check(L, R, Opcode, Bits, PreciseBits, Width, Count, PreciseCount);
+      check(L, R, Opcode, FastBits, PreciseBits, Width, Count, PreciseCount);
       R = next(R);
     } while (!R.isEmptySet());
     L = next(L);
   } while (!L.isEmptySet());
   outs() << "checked " << count << " ConstantRanges for Op = " << tostr(Opcode) << "\n";
   double Precise = PreciseBits / PreciseCount;
-  double Other = Bits / Count;
-  // assert(Precise <= Other);
+  double Fast = FastBits / Count;
+  assert(Precise <= Fast);
   outs() << "best possible bits = " << Precise << "\n";
-  outs() << "transfer function bits = " << Other << "\n";
+  outs() << "fast transfer function bits = " << Fast << "\n";
 }
 
 static void test(const int Width) {
@@ -305,6 +308,14 @@ static void test(const int Width) {
   testAllConstantRanges(Instruction::LShr, Width);
   testAllConstantRanges(Instruction::AShr, Width);
 #endif
+}
+
+static void printSizes() {
+  MyConstantRange R(2, /*isFullSet=*/false);
+  do {
+    outs() << R << "  " << R.getSetSize().getLimitedValue() << "\n";
+    R = next(R);
+  } while (!R.isEmptySet());
 }
 
 int main(void) {
