@@ -5,7 +5,7 @@
 
 using namespace llvm;
 
-static const bool Verbose = false;
+static const bool Verbose = true;
 static const int MaxWidth = 4;
 
 class MyConstantRange : public ConstantRange {
@@ -230,10 +230,7 @@ static void check(const MyConstantRange L, const MyConstantRange R, const unsign
   MyConstantRange PreciseRes = exhaustive(L, R, Opcode, FastRes, Width);
 
   long FastSize = FastRes.getSetSize().getLimitedValue();
-  assert(FastSize >= 0 && FastSize <= (1 << Width));
   long PreciseSize = PreciseRes.getSetSize().getLimitedValue();
-  assert(PreciseSize >= 0 && PreciseSize <= (1 << Width));
-  assert(PreciseSize <= FastSize);
 
   if (Verbose) {
     outs() << "signed: " << L << " " << tostr(Opcode) << " " << R << " =   fast : " << FastRes
@@ -254,6 +251,10 @@ static void check(const MyConstantRange L, const MyConstantRange R, const unsign
     }
     outs() << "\n";
   }
+
+  assert(FastSize >= 0 && FastSize <= (1 << Width));
+  assert(PreciseSize >= 0 && PreciseSize <= (1 << Width));
+  assert(PreciseSize <= FastSize);
 
   if (FastSize > 0) {
     FastBits += log2((double)FastSize);
