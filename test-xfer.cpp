@@ -2,9 +2,14 @@
 #include "llvm/IR/ConstantRange.h"
 #include "llvm/Support/raw_ostream.h"
 #include <iostream>
+#include <ctime>
+#include <ratio>
+#include <chrono>
 
 using namespace llvm;
+using namespace std::chrono;
 
+static const bool Speed = true;
 static const bool Verbose = false;
 static const int MaxWidth = 4;
 
@@ -324,10 +329,67 @@ static void testAllConstantRanges(const unsigned Opcode, const int Width) {
   outs() << "fast transfer function bits = " << Fast << "\n";
 }
 
+static void timeAllConstantRanges(const unsigned Opcode, const int Width) {
+  const int REPS = 5;
+  std::vector<duration<double>> Times(REPS);
+  std::vector<long> Bits(REPS);
+  for (int Rep = 0; Rep < REPS; Rep++) {
+    high_resolution_clock::time_point start = high_resolution_clock::now();
+    MyConstantRange L(Width, /*isFullSet=*/false);
+    MyConstantRange R(Width, /*isFullSet=*/false);
+    long B = 0;
+    do {
+      do {
+        MyConstantRange FastRes(Width, true);
+        switch (Opcode) {
+        case Instruction::And:
+          FastRes = L.binaryAnd(R);
+          break;
+        case Instruction::Or:
+          FastRes = L.binaryOr(R);
+          break;
+        case Instruction::Add:
+          FastRes = L.add(R);
+          break;
+        case Instruction::Sub:
+          FastRes = L.sub(R);
+          break;
+        case Instruction::Shl:
+          FastRes = L.shl(R);
+          break;
+        case Instruction::LShr:
+          FastRes = L.lshr(R);
+          break;
+        case Instruction::AShr:
+          FastRes = L.ashr(R);
+          break;
+        default:
+          report_fatal_error("unsupported opcode");
+        }
+        B += FastRes.getSetSize().getLimitedValue();
+        R = next(R);
+      } while (!R.isEmptySet());
+      L = next(L);
+    } while (!L.isEmptySet());
+    high_resolution_clock::time_point stop = high_resolution_clock::now();
+    duration<double> T = duration_cast<duration<double>>(stop - start);
+    Times.at(Rep) = T;
+    Bits.at(Rep) = B;
+  }
+  for (int Rep = 0; Rep < REPS; Rep++) {
+    outs() << "Time = " << Times.at(Rep).count() << "  Bits = " << Bits.at(Rep) << "\n";
+  }
+}
+
 static void test(const int Width) {
   outs() << "\nWidth = " << Width << "\n";
-  testAllConstantRanges(Instruction::Or, Width);
-  testAllConstantRanges(Instruction::And, Width);
+  if (Speed) {
+    timeAllConstantRanges(Instruction::Or, Width);
+    timeAllConstantRanges(Instruction::And, Width);
+  } else {
+    testAllConstantRanges(Instruction::Or, Width);
+    testAllConstantRanges(Instruction::And, Width);
+  }
 #if 0
   testAllConstantRanges(Instruction::Add, Width);
   testAllConstantRanges(Instruction::Sub, Width);
@@ -346,14 +408,13 @@ static void printSizes() {
 }
 
 int main(void) {
-
-#if 1
-  for (int Width = 1; Width <= MaxWidth; ++Width) {
-    test(Width);
+  if (Speed) {
+    test(6);
+  } else {
+    for (int Width = 1; Width <= MaxWidth; ++Width) {
+      test(Width);
+    }
   }
-#else
-  test(2);
-#endif
 
   return 0;
 }
