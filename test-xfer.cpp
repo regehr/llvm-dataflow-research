@@ -1,6 +1,8 @@
 #include "llvm/ADT/APInt.h"
 #include "llvm/IR/ConstantRange.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Analysis/ValueTracking.h"
+#include "llvm/Support/KnownBits.h"
 #include <iostream>
 #include <ctime>
 #include <ratio>
@@ -36,6 +38,10 @@ public:
   }
 #endif
 
+#ifdef TEST
+#include "funcs.cpp"
+#endif
+  
 };
 
 static void printUnsigned(const MyConstantRange &CR, raw_ostream &OS) {
@@ -374,17 +380,18 @@ static void timeAllConstantRanges(const unsigned Opcode, const int Width) {
     if (t < Best)
       Best = t;
   }
-  outs() << Best << " " << Bits.at(0) << "\n";
+  const std::string s = "";
+  outs() << Best << "  " << Bits.at(0) << "  " << s << "\n";
 }
 
 static void test(const int Width) {
   if (Speed) {
-    timeAllConstantRanges(Instruction::Or, Width);
     timeAllConstantRanges(Instruction::And, Width);
+    //timeAllConstantRanges(Instruction::Or, Width);
   } else {
     outs() << "\nWidth = " << Width << "\n";
-    testAllConstantRanges(Instruction::Or, Width);
     testAllConstantRanges(Instruction::And, Width);
+    //testAllConstantRanges(Instruction::Or, Width);
   }
 #if 0
   testAllConstantRanges(Instruction::Add, Width);
@@ -407,8 +414,12 @@ int main(void) {
   if (Speed) {
     test(6);
   } else {
-    for (int Width = 1; Width <= MaxWidth; ++Width) {
-      test(Width);
+    if (1) {
+      for (int Width = 1; Width <= MaxWidth; ++Width) {
+	test(Width);
+      }
+    } else {
+      test(4);
     }
   }
 
