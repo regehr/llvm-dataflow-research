@@ -355,10 +355,11 @@ static void timeAllConstantRanges(const unsigned Opcode, const int Width) {
           report_fatal_error("unsupported opcode");
         }
         long N = FastRes.getSetSize().getLimitedValue();
-        if (N > 0)
+        if (N > 0) {
           B += log2((double)N);
-        R = next(R);
+        }
         Count++;
+        R = next(R);
       } while (!R.isEmptySet());
       L = next(L);
     } while (!L.isEmptySet());
