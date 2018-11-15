@@ -9,7 +9,7 @@
 using namespace llvm;
 using namespace std::chrono;
 
-static const bool Speed = true;
+static const bool Speed = false;
 static const bool Verbose = false;
 static const int MaxWidth = 4;
 
@@ -22,19 +22,6 @@ public:
   using ConstantRange::operator=;
 
   // your transfer functions go here
-
-#if 0
-  // Pavol's code
-  MyConstantRange
-  binaryOr(const MyConstantRange &Other) const {
-    if (isEmptySet() || Other.isEmptySet())
-      return MyConstantRange(getBitWidth(), /*isFullSet=*/false);
-    APInt lower = APIntOps::umax(getUnsignedMin(), Other.getUnsignedMin());
-    unsigned active_bits = std::max(getUnsignedMax().getActiveBits(), Other.getUnsignedMax().getActiveBits());
-    APInt upper = APInt::getOneBitSet(getBitWidth(), active_bits); // upper of constant range is exclusive, 1111 + 1 -> 10000
-    return MyConstantRange(std::move(lower), std::move(upper));
-  }
-#endif
 
 #if 0
   // this is the code from ConstantRange.cpp
@@ -332,12 +319,13 @@ static void testAllConstantRanges(const unsigned Opcode, const int Width) {
 static void timeAllConstantRanges(const unsigned Opcode, const int Width) {
   const int REPS = 5;
   std::vector<duration<double>> Times(REPS);
-  std::vector<long> Bits(REPS);
+  std::vector<double> Bits(REPS);
   for (int Rep = 0; Rep < REPS; Rep++) {
     high_resolution_clock::time_point start = high_resolution_clock::now();
     MyConstantRange L(Width, /*isFullSet=*/false);
     MyConstantRange R(Width, /*isFullSet=*/false);
-    long B = 0;
+    double B = 0;
+    long Count = 0;
     do {
       do {
         MyConstantRange FastRes(Width, true);
@@ -366,27 +354,34 @@ static void timeAllConstantRanges(const unsigned Opcode, const int Width) {
         default:
           report_fatal_error("unsupported opcode");
         }
-        B += FastRes.getSetSize().getLimitedValue();
+        long N = FastRes.getSetSize().getLimitedValue();
+        if (N > 0)
+          B += log2((double)N);
         R = next(R);
+        Count++;
       } while (!R.isEmptySet());
       L = next(L);
     } while (!L.isEmptySet());
     high_resolution_clock::time_point stop = high_resolution_clock::now();
     duration<double> T = duration_cast<duration<double>>(stop - start);
     Times.at(Rep) = T;
-    Bits.at(Rep) = B;
+    Bits.at(Rep) = B / Count;
   }
+  double Best = 1e33;
   for (int Rep = 0; Rep < REPS; Rep++) {
-    outs() << "Time = " << Times.at(Rep).count() << "  Bits = " << Bits.at(Rep) << "\n";
+    double t = Times.at(Rep).count();
+    if (t < Best)
+      Best = t;
   }
+  outs() << Best << " " << Bits.at(0) << "\n";
 }
 
 static void test(const int Width) {
-  outs() << "\nWidth = " << Width << "\n";
   if (Speed) {
     timeAllConstantRanges(Instruction::Or, Width);
     timeAllConstantRanges(Instruction::And, Width);
   } else {
+    outs() << "\nWidth = " << Width << "\n";
     testAllConstantRanges(Instruction::Or, Width);
     testAllConstantRanges(Instruction::And, Width);
   }
