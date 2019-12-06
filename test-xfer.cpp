@@ -23,6 +23,16 @@ public:
   MyConstantRange(APInt Lower, APInt Upper) : ConstantRange(Lower, Upper) {}
   using ConstantRange::operator=;
 
+  APInt getSetSize() {
+    if (isFullSet()) {
+      APInt Size(getBitWidth() + 1, 0);
+      Size.setBit(getBitWidth());
+      return Size;
+    }
+    // This is also correct for wrapped sets.                                                                 
+    return (getUpper() - getLower()).zext(getBitWidth() + 1);
+  }
+  
   // your transfer functions go here
 
 #if 0
